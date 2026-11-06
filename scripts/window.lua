@@ -145,6 +145,14 @@ function Window:SaveAllGeometry()
     end
 end
 
+local function setWindowKeyboard(frame, enabled)
+    if enabled then
+        frame:SetPropagateKeyboardInput(true)
+    end
+
+    frame:EnableKeyboard(enabled)
+end
+
 -- Only windows hidden by this option are restored when combat ends.
 function Window:CombatChanged(inCombat)
     local windows = { self }
@@ -153,6 +161,10 @@ function Window:CombatChanged(inCombat)
     end
 
     for _, window in ipairs(windows) do
+        if window.frame then
+            setWindowKeyboard(window.frame, not inCombat)
+        end
+
         if not inCombat then
             window.manualCombatOpen = nil
         end
@@ -314,12 +326,14 @@ end
 
 function Window:InstallWindowFocus()
     self.frame.whisprController = self
-    -- Visible windows receive Escape even after clicking back into the world.
+    -- Outside combat, visible windows receive Escape even after clicking back into the world.
     -- Frame stacking determines which window receives it first; consume it so
     -- a single press cannot also close windows underneath this one.
-    self.frame:EnableKeyboard(true)
-    self.frame:SetPropagateKeyboardInput(true)
     self.frame:SetScript("OnKeyDown", function(frame, key)
+        if InCombatLockdown and InCombatLockdown() then
+            return
+        end
+
         local handled = key == "ESCAPE"
         frame:SetPropagateKeyboardInput(not handled)
         if handled then
@@ -332,6 +346,9 @@ function Window:InstallWindowFocus()
             frame:SetPropagateKeyboardInput(false)
         end
     end)
+
+    -- Combat locks propagation, which can still be disabled from the last Escape.
+    setWindowKeyboard(self.frame, not (InCombatLockdown and InCombatLockdown()))
 
     if Window.focusEvents then
         return
@@ -1576,6 +1593,15 @@ end
 -- them before allocating replacements, just like GatherLite's node frame pool.
 local MESSAGE_OVERSCAN = 80
 
+local function createMessageText(parent)
+    local text = UI.Text(parent, "", "GameFontHighlight")
+    text:SetSpacing(2)
+    text:SetJustifyV("TOP")
+    text:SetWordWrap(true)
+    text:SetNonSpaceWrap(true)
+    return text
+end
+
 local function createMessageFrame(self)
     local scroll = self.scroll
     local bubble = CreateFrame("Frame", nil, scroll.content)
@@ -1590,11 +1616,8 @@ local function createMessageFrame(self)
     bubble.classIcon:Hide()
     -- Use one native FontString per bubble. A ScrollingMessageFrame
     -- crops its internal line boxes, even when its outer frame is tall.
-    bubble.text = UI.Text(bubble, "", "GameFontHighlight")
+    bubble.text = createMessageText(bubble)
     bubble.text:SetPoint("TOPLEFT", 10, -22)
-    bubble.text:SetSpacing(2)
-    bubble.text:SetJustifyV("TOP")
-    bubble.text:SetWordWrap(true)
     bubble.text:SetTextColor(0.94, 0.95, 1)
     bubble:SetHyperlinksEnabled(true)
     bubble:SetScript("OnHyperlinkClick", function(owner, link, text, button)
@@ -1724,8 +1747,6 @@ local function measureMessage(bubble, message, conversation, maxWidth, grouped)
 
     bubble.text:ClearAllPoints()
     bubble.text:SetPoint("TOPLEFT", 10, -textTop)
-    bubble.text:SetJustifyV("TOP")
-    bubble.text:SetHeight(0) -- measure the actual glyph block, without vertical slack
     bubble.text:SetWidth(maxWidth - 20)
     bubble.text:SetText(rendered)
     local naturalWidth = bubble.text.GetUnboundedStringWidth and bubble.text:GetUnboundedStringWidth()
@@ -1743,7 +1764,8 @@ local function measureMessage(bubble, message, conversation, maxWidth, grouped)
         addon.Selection.Prepare(bubble, rendered, bodyWidth - 20)
     end
 
-    local height = math.ceil(math.max(fontSize or 12, bubble.text:GetStringHeight()))
+    -- Let the FontString grow to its wrapped height so it never gets a height cap.
+    local height = math.ceil(math.max(fontSize or 12, bubble.text:GetHeight()))
     bubble.textHeight = height
     local layout = bubble.selectionLayout
     local singleLine = layout and #layout.lines == 1
@@ -1877,8 +1899,6 @@ function Window:UpdateVisibleMessages()
                     + (row.height - bubble.bodyTop - bubble.textHeight) / 2
                     + bubble.textBaselineOffset
                 bubble.text:SetPoint("TOPLEFT", bubble.bodyLeft + 10, -textOffset)
-                bubble.text:SetHeight(bubble.textHeight)
-                bubble.text:SetJustifyV("TOP")
                 if addon.Selection then
                     local geometry = table.concat({ row.y, bubble.bodyLeft, textOffset, bubble.textHeight }, ":")
                     addon.Selection.Update(self, bubble, rendered, bubble.bodyWidth, message.id, geometry)
@@ -1963,9 +1983,7 @@ function Window:RefreshMessages(forceBottom)
     self.firstMessageID = messages[first] and messages[first].id or nil
     if not self.messageMeasure then
         local measure = CreateFrame("Frame", nil, scroll.content)
-        measure.text = UI.Text(measure, "", "GameFontHighlight")
-        measure.text:SetSpacing(2)
-        measure.text:SetWordWrap(true)
+        measure.text = createMessageText(measure)
         measure.meta = UI.Text(measure, "", "GameFontDisableSmall")
         measure.meta:SetPoint("TOPLEFT", 10, -7)
         measure:Hide()

@@ -89,7 +89,10 @@ function methods:SetPoint(...)
 end
 
 function methods:CreateFontString()
-    return frame(nil, self)
+    local label = frame(nil, self)
+    label.isFontString = true
+    label.height = 0
+    return label
 end
 
 function methods:CreateLine()
@@ -148,7 +151,15 @@ function methods:GetWidth()
 end
 
 function methods:GetHeight()
+    if self.isFontString and self.height == 0 then
+        return self:GetStringHeight()
+    end
+
     return self.height
+end
+
+function methods:SetNonSpaceWrap(enabled)
+    self.nonSpaceWrap = enabled
 end
 
 function methods:GetStringWidth()
@@ -1523,6 +1534,7 @@ equal(Window.focusBorder:IsShown(), false, "hidden window cannot retain focus bo
 print("Focused Escape handling, composer Escape, persistent focus border and idle fade passed.")
 
 function methods:SetPropagateKeyboardInput(propagate)
+    assert(not InCombatLockdown(), "keyboard propagation cannot change during combat")
     self.propagate = propagate
 end
 
@@ -1577,6 +1589,40 @@ equal(focusPop.frame.keyboardEnabled, true, "background popout listens for Escap
 pressKey(focusPop, "ESCAPE")
 equal(focusPop.frame:IsShown(), false, "Escape closes unfocused popout")
 print("Unfocused windows handle Escape without blocking gameplay keys.")
+
+do
+    local combatWindow = recreated()
+    combatWindow.popouts = {}
+    combatWindow:Open(modeChat.key, nil, true)
+    flush()
+    combatWindow:ToggleEmotes()
+    pressKey(combatWindow, "ESCAPE")
+    equal(combatWindow.frame.propagate, false, "Escape leaves the window in consuming mode")
+
+    combat = true
+    combatWindow:CombatChanged(true)
+    equal(combatWindow.frame:IsShown(), true, "combat leaves the chat visible when hiding is disabled")
+    equal(combatWindow.frame.keyboardEnabled, false, "combat disables a window that was consuming keys")
+    combatWindow.frame.scripts.OnKeyDown(combatWindow.frame, "W")
+
+    local combatPopout = recreated(combatWindow, manualChat.key)
+    combatWindow.popouts[manualChat.key] = combatPopout
+    combatPopout:Open(manualChat.key, nil, true)
+    flush()
+    equal(combatPopout.frame.keyboardEnabled, false, "popout opened in combat starts without keyboard capture")
+    combatPopout.input:SetFocus()
+    combatPopout.input.scripts.OnEscapePressed(combatPopout.input)
+    equal(combatPopout.frame:IsShown(), false, "composer Escape still works in combat")
+
+    combat = false
+    combatWindow:CombatChanged(false)
+    equal(combatWindow.frame.keyboardEnabled, true, "keyboard capture resumes after combat")
+    equal(combatWindow.frame.propagate, true, "gameplay key propagation is restored after combat")
+    equal(combatPopout.frame.keyboardEnabled, true, "combat-created popout gains keyboard capture")
+    equal(combatPopout.frame.propagate, true, "combat-created popout passes gameplay keys through")
+    pressKey(combatWindow, "ESCAPE")
+    equal(combatWindow.frame:IsShown(), false, "window Escape works again after combat")
+end
 
 -- Paging uses saved IDs so appends and retention do not shift its boundary.
 Whispr.db.global.maxMessages = 100
@@ -2723,6 +2769,43 @@ History.Add(
 shortWindow:RefreshMessages()
 flush()
 equal(shortWindow.bubbles[#shortWindow.bubbles].textBaselineOffset, 0, "wrapped message keeps original placement")
+
+do
+    local longWord = string.rep("abcdefghij", 14)
+    local originalGetHeight = methods.GetHeight
+
+    function methods:GetHeight()
+        if self.isFontString and self.height == 0 and self.text == longWord then
+            return self.nonSpaceWrap and math.ceil(#longWord * 7 / self:GetWidth()) * 16 or 16
+        end
+
+        return originalGetHeight(self)
+    end
+
+    local wrapChat = History.Add(Whispr.db.char, Whispr.db.global, "Wrap Regression", longWord, false, 2012, false)
+    History.Add(Whispr.db.char, Whispr.db.global, "Wrap Regression", "next message", false, 2013, false)
+    shortWindow:Open(wrapChat.key)
+    flush()
+    local first, nextBubble = shortWindow.bubbles[1], shortWindow.bubbles[2]
+    assert(first.text.nonSpaceWrap and shortWindow.messageMeasure.text.nonSpaceWrap, "both FontStrings wrap long words")
+    equal(first.text:GetText(), longWord, "word wrapping preserves the complete message")
+    equal(first.text.height, 0, "message text has no height cap")
+    local initialHeight = first.text:GetHeight()
+    assert(initialHeight > 16, "unbroken text takes multiple lines")
+    equal(first.textHeight, initialHeight, "bubble uses the native wrapped height")
+    equal(nextBubble.row.y, first.row.y + first.row.height + 6, "next message starts below the wrapped row")
+
+    local originalWidth = shortWindow.scroll:GetWidth()
+    shortWindow.scroll:SetWidth(originalWidth / 2)
+    shortWindow:RefreshMessages()
+    flush()
+    first = shortWindow.bubbles[1]
+    assert(first.textHeight > initialHeight, "a narrower view grows the message row")
+    equal(first.row.height, first.textHeight + first.bodyTop + 15, "row height covers every wrapped line plus padding")
+    shortWindow.scroll:SetWidth(originalWidth)
+    methods.GetHeight = originalGetHeight
+end
+
 shortWindow:Open(shortChat.key)
 flush()
 equal(shortWindow.bubbles[1].textBaselineOffset, 2, "recycled bubble restores single-line baseline")
