@@ -59,19 +59,17 @@ function Selection.Clear(window)
     end
 end
 
--- Lay out texture-bearing messages with explicit line breaks. Measurement uses
--- the renderer's width/height APIs, never its character hit/span APIs. The same
--- line breaks drive both the visible text and our selection rectangles.
-function Selection.Prepare(bubble, rendered, width)
-    if not rendered:find("|[TA]") then
+-- Use explicit breaks for inline images and when native wrapping clips text.
+-- The same breaks drive the visible text and the selection rectangles.
+function Selection.Prepare(bubble, rendered, width, naturalWidth)
+    local font = bubble.text
+    local fontPath, fontSize, fontFlags = font:GetFont()
+    local unwrapped = naturalWidth and naturalWidth > width and font:GetHeight() < fontSize * 2
+    if not rendered:find("|[TA]") and not unwrapped and not (font.IsTruncated and font:IsTruncated()) then
         bubble.selectionLayout = nil
-        bubble.text:SetWordWrap(true)
         return
     end
 
-    local font = bubble.text
-    font:SetWordWrap(false)
-    local fontPath, fontSize, fontFlags = font:GetFont()
     local spacing = font:GetSpacing()
     local cached = bubble.selectionLayout
     if
@@ -83,6 +81,7 @@ function Selection.Prepare(bubble, rendered, width)
         and cached.fontFlags == fontFlags
         and cached.spacing == spacing
     then
+        font:SetHeight(math.ceil(cached.height))
         font:SetText(cached.rendered)
         return
     end
@@ -189,18 +188,19 @@ function Selection.Prepare(bubble, rendered, width)
 
     line.raw = line.raw .. prefix
     flush()
-    local output, measurements, previousHeight = {}, {}, 0
-    for _, entry in ipairs(lines) do
-        output[#output + 1] = entry.raw
-        measurements[#measurements + 1] = entry.metric
-        font:SetText(table.concat(measurements, "\n"))
-        local height = font:GetStringHeight()
-        entry.top = previousHeight == 0 and 0 or previousHeight + spacing
-        entry.height = math.max(fontSize, height - entry.top)
-        previousHeight = height
+    -- Measure each line without the visible FontString's height constraint.
+    local output, height = {}, 0
+    for index, entry in ipairs(lines) do
+        output[index] = entry.raw
+        probe:SetText(entry.metric)
+        entry.top = index == 1 and 0 or height + spacing
+        entry.height = math.max(fontSize, probe:GetStringHeight())
+        height = entry.top + entry.height
     end
 
-    font:SetText(table.concat(output, "\n"))
+    local wrapped = table.concat(output, "\n")
+    font:SetHeight(math.ceil(height))
+    font:SetText(wrapped)
     bubble.selectionLayout = {
         source = rendered,
         width = width,
@@ -208,9 +208,9 @@ function Selection.Prepare(bubble, rendered, width)
         fontSize = fontSize,
         fontFlags = fontFlags,
         spacing = spacing,
-        rendered = table.concat(output, "\n"),
+        rendered = wrapped,
         lines = lines,
-        height = previousHeight,
+        height = height,
     }
 end
 

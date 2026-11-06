@@ -163,7 +163,8 @@ function methods:SetNonSpaceWrap(enabled)
 end
 
 function methods:GetStringWidth()
-    return math.min(self.width, #self.text * 7)
+    local width = #self.text * 7
+    return self.width == 0 and width or math.min(self.width, width)
 end
 
 function methods:SetValue(value)
@@ -2804,6 +2805,37 @@ do
     equal(first.row.height, first.textHeight + first.bodyTop + 15, "row height covers every wrapped line plus padding")
     shortWindow.scroll:SetWidth(originalWidth)
     methods.GetHeight = originalGetHeight
+end
+
+do
+    local clipped = "Greetings |cff80ff80Tester|r! "
+        .. "I wanted to send a longer whisper with enough ordinary words to fill multiple lines. Here is the ending."
+    local originalGetStringHeight = methods.GetStringHeight
+
+    function methods:GetStringHeight()
+        if self.text:find("^Greetings ") then
+            return 16
+        end
+
+        return originalGetStringHeight(self)
+    end
+
+    local clippedChat = History.Add(Whispr.db.char, Whispr.db.global, "Clipped Whisper", clipped, false, 2014, false)
+    History.Add(Whispr.db.char, Whispr.db.global, "Clipped Whisper", "following message", false, 2015, false)
+    shortWindow:Open(clippedChat.key)
+    flush()
+    local first, nextBubble = shortWindow.bubbles[1], shortWindow.bubbles[2]
+    local wrapped = first.text:GetText()
+    assert(wrapped:find("\n", 1, true), "message expands when native wrapping leaves it on one line")
+    assert(wrapped:find("|cff80ff80Tester|r", 1, true), "manual breaks preserve name coloring")
+    assert(wrapped:match("Here is the ending%.$"), "full message tail is rendered")
+    equal(first.selectionLayout.source, clipped, "selection keeps the full original text")
+    assert(first.textHeight > 16, "displayed text has more than one line")
+    equal(first.text:GetStringHeight(), 16, "native text height still reports one line")
+    equal(first.text:GetHeight(), first.textHeight, "display FontString gets space for every measured line")
+    equal(first.row.height, first.textHeight + first.bodyTop + 15, "measured row fits the manually wrapped text")
+    equal(nextBubble.row.y, first.row.y + first.row.height + 6, "following message is laid out below it")
+    methods.GetStringHeight = originalGetStringHeight
 end
 
 shortWindow:Open(shortChat.key)

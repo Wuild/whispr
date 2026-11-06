@@ -1747,7 +1747,11 @@ local function measureMessage(bubble, message, conversation, maxWidth, grouped)
 
     bubble.text:ClearAllPoints()
     bubble.text:SetPoint("TOPLEFT", 10, -textTop)
-    bubble.text:SetWidth(maxWidth - 20)
+    -- WoW also needs word wrap enabled to draw the explicit breaks in texture text.
+    bubble.text:SetWordWrap(true)
+    bubble.text:SetHeight(0)
+    -- Width APIs can report only the part visible within the current bounds.
+    bubble.text:SetWidth(0)
     bubble.text:SetText(rendered)
     local naturalWidth = bubble.text.GetUnboundedStringWidth and bubble.text:GetUnboundedStringWidth()
         or bubble.text:GetStringWidth()
@@ -1761,13 +1765,12 @@ local function measureMessage(bubble, message, conversation, maxWidth, grouped)
 
     bubble.text:SetWidth(bodyWidth - 20)
     if addon.Selection then
-        addon.Selection.Prepare(bubble, rendered, bodyWidth - 20)
+        addon.Selection.Prepare(bubble, rendered, bodyWidth - 20, naturalWidth)
     end
 
-    -- Let the FontString grow to its wrapped height so it never gets a height cap.
-    local height = math.ceil(math.max(fontSize or 12, bubble.text:GetHeight()))
-    bubble.textHeight = height
     local layout = bubble.selectionLayout
+    local height = math.ceil(math.max(fontSize or 12, layout and layout.height or bubble.text:GetHeight()))
+    bubble.textHeight = height
     local singleLine = layout and #layout.lines == 1
         or (
             not layout

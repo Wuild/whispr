@@ -245,7 +245,7 @@ local function metrics(f)
     end
 
     function f:GetHeight()
-        return self:GetStringHeight()
+        return self.height or self:GetStringHeight()
     end
 
     function f:GetLeft()
@@ -260,11 +260,15 @@ local function metrics(f)
 
     function f:SetSpacing() end
 
-    function f:SetWordWrap() end
+    function f:SetWordWrap(enabled)
+        self.wordWrap = enabled
+    end
 
     function f:SetWidth() end
 
-    function f:SetHeight() end
+    function f:SetHeight(height)
+        self.height = height > 0 and height or nil
+    end
 
     return f
 end
@@ -274,6 +278,7 @@ function bubble:CreateFontString()
 end
 
 metrics(bubble.text)
+bubble.text:SetWordWrap(true)
 bubble.text.FindCharacterIndexAtCoordinate = unsafeNativeCall
 bubble.text.CalculateScreenAreaFromCharacterSpan = unsafeNativeCall
 for _, rendered in ipairs({ smile, "hello " .. smile .. " world", "hello |A:some-atlas:16:16|a world" }) do
@@ -293,10 +298,17 @@ for _, rendered in ipairs({ smile, "hello " .. smile .. " world", "hello |A:some
 end
 
 local wrapped = "hello " .. smile .. " world"
+local originalGetStringHeight = bubble.text.GetStringHeight
+bubble.text.GetStringHeight = function()
+    return 16
+end
+
 Selection.Prepare(bubble, wrapped, 50)
 Selection.Update(window, bubble, wrapped, 50, 2)
 equal(#bubble.selectionLayout.lines, 2, "native-width wrapping keeps words together")
 equal(bubble.text:GetText(), "hello " .. smile .. "\nworld", "render and selection share line breaks")
+equal(bubble.text:GetHeight(), 34, "emoji message gets room for both lines when its reported text height is clipped")
+bubble.text.GetStringHeight = originalGetStringHeight
 -- Select only the emoji, forward and backward, using its measured rectangle.
 for _, direction in ipairs({ 1, -1 }) do
     x, y = (direction == 1 and 30 or 46) * 2, 190
@@ -310,6 +322,7 @@ end
 
 Selection.Prepare(bubble, wrapped, 30)
 equal(#bubble.selectionLayout.lines, 3, "resize recalculates texture layout")
+assert(bubble.text.wordWrap, "resizing keeps multiline rendering enabled for texture text")
 local utf = "é " .. smile .. " 漢"
 Selection.Prepare(bubble, utf, 100)
 Selection.Update(window, bubble, utf, 100, 4)
