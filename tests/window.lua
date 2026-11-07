@@ -163,7 +163,8 @@ function methods:SetNonSpaceWrap(enabled)
 end
 
 function methods:GetStringWidth()
-    local width = #self.text * 7
+    local text = self.text:gsub("|Hwhisprname:%x+|h(.-)|h", "%1")
+    local width = #text * 7
     return self.width == 0 and width or math.min(self.width, width)
 end
 
@@ -187,7 +188,8 @@ function methods:GetSpacing()
 end
 
 function methods:GetStringHeight()
-    return math.ceil(math.max(1, #self.text) / 55) * 16
+    local text = self.text:gsub("|Hwhisprname:%x+|h(.-)|h", "%1")
+    return math.ceil(math.max(1, #text) / 55) * 16
 end
 
 function methods:GetScript(event)
@@ -3072,6 +3074,50 @@ equal(focusPop.input:HasFocus(), true, "separate window owns the new insertion t
 focusPop:SetWindowFocus(false)
 IsModifiedClick = nil
 print("Shift-click linking preserves input without keeping the window above the spellbook.")
+
+do
+    local invite = frame()
+    GetCurrentKeyBoardFocus = function()
+        return invite
+    end
+
+    IsShiftKeyDown = function()
+        return true
+    end
+
+    local name = History.Get(modeChat.key).name
+    History.Add(Whispr.db.char, Whispr.db.global, name, "Invite fixture", false, 2014, false)
+    Window:Open(modeChat.key)
+    flush()
+    Window:SetWindowFocus(false)
+    hovered = Window.headerMenu
+    Window.focusEvents.scripts.OnEvent()
+    assert(not Window.focused, "shift-click keeps the external edit box in front")
+    invite:SetText("To: ")
+    invite:SetCursorPosition(4)
+    Window.headerMenu.scripts.OnClick(Window.headerMenu, "LeftButton")
+    equal(invite:GetText(), "To: " .. name, "header inserts the plain name at the edit box cursor")
+
+    for _, card in ipairs(Window.rows) do
+        if card:IsShown() and card.key ~= modeChat.key then
+            invite:SetText("")
+            card.scripts.OnClick(card, "LeftButton")
+            equal(invite:GetText(), History.Get(card.key).name, "conversation card inserts the name")
+            equal(Window.active, modeChat.key, "shift-click does not switch conversations")
+            break
+        end
+    end
+
+    local message = Window.bubbles[1]
+    local sender = assert(message.meta:GetText():match("|H(whisprname:%x+)|h"), "message sender has a name link")
+    invite:SetText("")
+    message.scripts.OnHyperlinkClick(message, sender, "", "LeftButton")
+    equal(invite:GetText(), name, "message sender inserts the plain name")
+    invite:SetText("")
+    message.scripts.OnHyperlinkClick(message, "player:Friend-OtherRealm:1", "", "LeftButton")
+    equal(invite:GetText(), "Friend-OtherRealm", "native name links preserve the realm")
+    GetCurrentKeyBoardFocus, IsShiftKeyDown = nil, nil
+end
 
 -- Exercise live skin changes on existing windows and pooled message surfaces.
 function methods:CreateMaskTexture()

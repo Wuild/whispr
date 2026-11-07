@@ -333,6 +333,7 @@ local function copyBridge(window)
     -- control. This invisible bridge contains just the selection, never renders
     -- message text, and never changes the visible FontString or saved history.
     local bridge = CreateFrame("EditBox", nil, window.frame)
+    bridge.whisprCopyBridge = true
     window.copyBridge = bridge
     bridge:SetSize(1, 1)
     -- The native edit caret can remain visible despite the field's alpha.
@@ -384,7 +385,7 @@ function Selection.Attach(window, bubble)
 
     bubble:EnableMouse(true)
     bubble:HookScript("OnMouseDown", function(_, button)
-        if button ~= "LeftButton" then
+        if button ~= "LeftButton" or (IsShiftKeyDown and IsShiftKeyDown()) then
             return
         end
 

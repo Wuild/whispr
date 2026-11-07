@@ -43,9 +43,20 @@ local function render(text)
     return addon.Format.Message(text, true, 14)
 end
 
+local function coloredName(name, color, target)
+    return "|cff" .. color .. "|Hwhisprname:" .. addon.Format.Encode(target or name) .. "|h" .. name .. "|h|r"
+end
+
 assert(
-    render("Ask Alice, BOB and First Last.") == "Ask |cff40c7ebAlice|r, |cffc79c6eBOB|r and |cff40c7ebFirst Last|r.",
-    "known names use class colors and preserve case"
+    render("Ask Alice, BOB and First Last.")
+        == "Ask "
+            .. coloredName("Alice", "40c7eb")
+            .. ", "
+            .. coloredName("BOB", "c79c6e")
+            .. " and "
+            .. coloredName("First Last", "40c7eb")
+            .. ".",
+    "known names use class colors, preserve case, and link to the character"
 )
 for _, text in ipairs({
     "Alicea",
@@ -80,13 +91,16 @@ options.set({ "drafts" }, true)
 addon.Characters.sources["alice-away"] = { classFile = "WARRIOR" }
 addon.Characters.revision = 1
 assert(render("Alice") == "Alice", "ambiguous realm-less names not guessed")
-assert(render("Alice-Away") == "|cffc79c6eAlice-Away|r", "explicit foreign realm name colored")
-assert(render("Alice-Home") == "|cff40c7ebAlice-Home|r", "explicit local realm name resolves known local character")
+assert(render("Alice-Away") == coloredName("Alice-Away", "c79c6e"), "foreign realm is kept in the link")
+assert(
+    render("Alice-Home") == coloredName("Alice-Home", "40c7eb", "alice"),
+    "local realm name resolves the local character"
+)
 addon.Characters.sources.alice = { classFile = "WARRIOR" }
 addon.Characters.sources["alice-away"] = nil
 addon.Characters.revision = 2
-assert(render("Alice-Home") == "|cffc79c6eAlice-Home|r", "roster revision refreshes cached class")
-assert(render("Alice-Away") == "|cffc79c6eAlice-Away|r", "learned name retained after leaving roster")
+assert(render("Alice-Home") == coloredName("Alice-Home", "c79c6e", "alice"), "roster revision refreshes cached class")
+assert(render("Alice-Away") == coloredName("Alice-Away", "c79c6e"), "learned name retained after leaving roster")
 assert(render("Alice") == "Alice", "cached foreign identity keeps short name ambiguous")
 addon.Extensions:SetEnabled("character_names", false)
 assert(
@@ -94,11 +108,11 @@ assert(
     "disable removes display and composer filters"
 )
 addon.Extensions:SetEnabled("character_names", true)
-assert(render("Bob") == "|cffc79c6eBob|r", "reenable restores coloring")
+assert(render("Bob") == coloredName("Bob", "c79c6e"), "reenable restores coloring")
 addon.Characters.sources.inv = { classFile = "MAGE" }
 addon.Characters.revision = 3
 local combined = addon.Format.Message("Alice-Home inv", true, 14, "sender")
-assert(combined:find("|cffc79c6eAlice-Home|r", 1, true), "names colored alongside keyword actions")
+assert(combined:find(coloredName("Alice-Home", "c79c6e", "alice"), 1, true), "names colored alongside keyword actions")
 assert(
     combined:find("|cffffff00|Hwhisprkeyword:", 1, true) and combined:find("|h[inv]|h|r", 1, true),
     "keyword action retains yellow bracket styling"
@@ -116,4 +130,54 @@ for _ in pairs(names.known) do
 end
 
 assert(count == 1000, "session name cache bounded")
+
+local current, alt = { conversations = {} }, { conversations = {} }
+Whispr.db.char = alt
+Whispr.db.sv = { char = { current = current, alt = alt } }
+addon.Client = { hasLastNames = true }
+UnitExists = function(unit)
+    return unit == "player"
+end
+
+UnitIsPlayer = function()
+    return true
+end
+
+UnitNameUnmodified = function()
+    return "My", "Alt"
+end
+
+UnitGUID = function()
+    return "Player-1-alt"
+end
+
+UnitClass = function()
+    return "Mage", "MAGE"
+end
+
+UnitRace = function()
+    return "Human"
+end
+
+addon.Characters.RefreshSources(alt)
+assert(render("My Alt") == coloredName("My Alt", "40c7eb"), "logged-in character gets class colors")
+
+Whispr.db.char = current
+UnitNameUnmodified = function()
+    return "My", "Main"
+end
+
+UnitClass = function()
+    return "Warrior", "WARRIOR"
+end
+
+names.known = nil -- A login starts without the previous character's session cache.
+addon.Characters.RefreshSources(current)
+assert(
+    render("My Main and My Alt") == coloredName("My Main", "c79c6e") .. " and " .. coloredName("My Alt", "40c7eb"),
+    "owned characters are highlighted after switching even without account history or roster entries"
+)
+local ownDraft = addon.Format.Input("My Alt", true, 14)
+assert(ownDraft:find("|cff40c7ebMy Alt|r", 1, true), "offline own characters are highlighted in drafts")
+assert(addon.Format.Outgoing(ownDraft) == "My Alt", "own name highlighting leaves sent text unchanged")
 print("Class name colors, boundaries, realms, cache refresh, composer round-trip and lifecycle passed.")

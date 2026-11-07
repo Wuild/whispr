@@ -3,6 +3,29 @@ local L = addon.L
 local Actions = { chatLines = {} }
 addon.Actions = Actions
 
+function Actions:InsertName(name, button)
+    if button ~= "LeftButton" or not (IsShiftKeyDown and IsShiftKeyDown()) then
+        return false
+    end
+
+    if
+        (HasAnySecretValues and HasAnySecretValues(name))
+        or type(name) ~= "string"
+        or name == ""
+        or name:find("[|%c]")
+    then
+        return false
+    end
+
+    local input = GetCurrentKeyBoardFocus and GetCurrentKeyBoardFocus()
+    if not input or not input.Insert or input.whisprCopyBridge then
+        return false
+    end
+
+    input:Insert(name)
+    return true
+end
+
 function Actions:RememberChat(key, lineID)
     if HasAnySecretValues and HasAnySecretValues(lineID) then
         return

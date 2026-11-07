@@ -2,6 +2,7 @@
 local addon = { Window = {}, Minimap = { Enable = function() end } }
 assert(loadfile("tests/support/locale.lua"))(addon)
 assert(loadfile("scripts/history.lua"))("Whispr", addon)
+assert(loadfile("scripts/format.lua"))("Whispr", addon)
 Whispr = {
     db = {
         char = {
@@ -25,6 +26,7 @@ local supported = {
     CHAT_MSG_BN_WHISPER_INFORM = true,
     CHAT_MSG_AFK = true,
     CHAT_MSG_DND = true,
+    GET_ITEM_INFO_RECEIVED = true,
     PLAYER_ENTERING_WORLD = true,
     PLAYER_TARGET_CHANGED = true,
     UPDATE_MOUSEOVER_UNIT = true,
@@ -77,3 +79,23 @@ end
 
 registered.PLAYER_ENTERING_WORLD()
 assert(restored, "world entry restores saved undocked state")
+
+local itemRefreshes = 0
+
+local function refreshMessages()
+    itemRefreshes = itemRefreshes + 1
+end
+
+addon.Window.frame = {
+    IsShown = function()
+        return true
+    end,
+}
+
+addon.Window.RefreshMessages = refreshMessages
+addon.Window.popouts = { { frame = addon.Window.frame, RefreshMessages = refreshMessages } }
+addon.Format.pendingItemColors[123] = true
+registered.GET_ITEM_INFO_RECEIVED("GET_ITEM_INFO_RECEIVED", 456, true)
+assert(itemRefreshes == 0, "unrelated item loads do not refresh Whispr")
+registered.GET_ITEM_INFO_RECEIVED("GET_ITEM_INFO_RECEIVED", 123, true)
+assert(itemRefreshes == 2 and not addon.Format.pendingItemColors[123], "ready item refreshes the inbox and popouts")

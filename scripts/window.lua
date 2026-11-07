@@ -371,7 +371,15 @@ function Window:InstallWindowFocus()
 
         while target do
             if target.whisprController then
-                target.whisprController:SetWindowFocus(true)
+                -- A modified click can insert a name into an edit box outside this window.
+                local inserting = IsShiftKeyDown
+                    and IsShiftKeyDown()
+                    and GetCurrentKeyBoardFocus
+                    and GetCurrentKeyBoardFocus()
+                if not inserting then
+                    target.whisprController:SetWindowFocus(true)
+                end
+
                 return
             end
 
@@ -1178,6 +1186,14 @@ function Window:LayoutPeople()
     self.peopleLayout = nil
 end
 
+function Window:InsertConversationName(key, button)
+    local conversation = History.Get(key)
+    return conversation
+        and conversation.transport ~= "bnet"
+        and not conversation.demo
+        and addon.Actions:InsertName(conversation.name, button)
+end
+
 function Window:ConversationMenu(button, key)
     if addon.Actions:OpenPlayerMenu(key, function(menu)
         self:AddConversationMenuEntries(menu, key)
@@ -1358,6 +1374,10 @@ function Window:RefreshList()
                     return
                 end
 
+                if self:InsertConversationName(button.key, mouseButton) then
+                    return
+                end
+
                 self:SetDrawer(false)
                 if self.detached and (self.detached[button.key] or Whispr.db.global.separateWindows) then
                     self:Open(button.key)
@@ -1514,6 +1534,17 @@ function Window:ShowCopyText(value, caption)
 end
 
 function Window:Link(link, text, button, inviteKey)
+    local name = link:match("^whisprname:(%x+)$")
+    if name then
+        addon.Actions:InsertName(Format.Decode(name), button)
+        return
+    end
+
+    local player = link:match("^player:([^:]+)")
+    if player and addon.Actions:InsertName(player, button) then
+        return
+    end
+
     if link:match("^whisprkeyword:") or link:match("^whisprinvite:") then
         if addon.KeywordActions then
             addon.KeywordActions:Click(self, link, button, inviteKey)
@@ -1736,12 +1767,18 @@ local function measureMessage(bubble, message, conversation, maxWidth, grouped)
     bubble.meta:ClearAllPoints()
     bubble.meta:SetPoint(right and "TOPRIGHT" or "TOPLEFT", right and -10 or 10, -7)
     bubble.meta:SetShown(not grouped)
-    bubble.meta:SetText(
-        (
-            message.status and L["Auto-reply"]
-            or (message.outgoing and (message.sourceCharacter or L["You"]) or conversation.name)
-        ) .. (Whispr.db.global.timestamps and ("  ·  " .. date(L["%H:%M"], message.time)) or "")
-    )
+    local sender = message.status and L["Auto-reply"]
+        or (message.outgoing and (message.sourceCharacter or L["You"]) or conversation.name)
+    if not message.status and not conversation.demo then
+        if message.outgoing and message.sourceCharacter then
+            local name, realm = sender:match("^(.-) %- (.+)$")
+            sender = Format.NameLink(name and (name .. "-" .. realm:gsub("%s+", "")) or sender, sender)
+        elseif not message.outgoing and conversation.transport ~= "bnet" then
+            sender = Format.NameLink(sender)
+        end
+    end
+
+    bubble.meta:SetText(sender .. (Whispr.db.global.timestamps and ("  ·  " .. date(L["%H:%M"], message.time)) or ""))
     local textTop = grouped and 8 or math.max(30, math.ceil(bubble.meta:GetStringHeight()) + 20)
     bubble.bodyTop = textTop - 7
 
@@ -2469,21 +2506,20 @@ function Window:Create()
     self.header:SetWidth(width - left - 230)
     self.header:SetWordWrap(false)
 
-    local function openPlayerMenu()
-        self:ConversationMenu(self.headerAvatar, self.active)
+    local function clickName(_, button)
+        if
+            (button == "RightButton" or button == "LeftButton") and not self:InsertConversationName(self.active, button)
+        then
+            self:ConversationMenu(self.headerAvatar, self.active)
+        end
     end
 
     self.headerAvatar:EnableMouse(true)
-    self.headerAvatar:SetScript("OnMouseUp", function(_, button)
-        if button == "RightButton" or button == "LeftButton" then
-            openPlayerMenu()
-        end
-    end)
-
+    self.headerAvatar:SetScript("OnMouseUp", clickName)
     self.headerMenu = CreateFrame("Button", nil, frame)
     self.headerMenu:SetAllPoints(self.header)
     self.headerMenu:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    self.headerMenu:SetScript("OnClick", openPlayerMenu)
+    self.headerMenu:SetScript("OnClick", clickName)
     self.subtitle = UI.Text(frame, "", "GameFontHighlightSmall")
     self.subtitle:SetPoint("TOPLEFT", left + 46, -64)
     self.subtitle:SetTextColor(unpack(UI.colors.muted))

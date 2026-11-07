@@ -168,6 +168,28 @@ function Whispr:OnEnable()
     self:RegisterEvent("CHAT_MSG_BN_WHISPER_INFORM", "BattleNetWhisper")
     self:RegisterEvent("CHAT_MSG_AFK", "WhisperStatus")
     self:RegisterEvent("CHAT_MSG_DND", "WhisperStatus")
+    self:RegisterEvent("GET_ITEM_INFO_RECEIVED", function(_, itemID, success)
+        local pending = addon.Format.pendingItemColors
+        if not pending[itemID] then
+            return
+        end
+
+        pending[itemID] = nil
+        if not success then
+            return
+        end
+
+        if Window.frame and Window.frame:IsShown() then
+            Window:RefreshMessages()
+        end
+
+        for _, window in pairs(Window.popouts) do
+            if window.frame and window.frame:IsShown() then
+                window:RefreshMessages()
+            end
+        end
+    end)
+
     for _, event in ipairs({
         "PLAYER_ENTERING_WORLD",
         "PLAYER_TARGET_CHANGED",

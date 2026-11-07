@@ -65,7 +65,7 @@ addon.Locale:OnReady(function()
                 if current and (current.identity ~= identity or current.hex ~= hex) then
                     aliases[value] = { ambiguous = true }
                 elseif not current then
-                    aliases[value] = { identity = identity, hex = hex }
+                    aliases[value] = { identity = identity, hex = hex, target = name }
                 end
             end
 
@@ -114,6 +114,15 @@ addon.Locale:OnReady(function()
             remember(name, info)
         end
 
+        -- Own names are useful even when viewing only the current character's history.
+        local db = Whispr.db
+        for _, saved in pairs(db.sv and db.sv.char or {}) do
+            local player = saved.playerCharacter
+            if player then
+                remember(player.name, player)
+            end
+        end
+
         local known = {}
         for identity, info in pairs(self.known) do
             known[#known + 1] = { identity = identity, info = info }
@@ -134,7 +143,7 @@ addon.Locale:OnReady(function()
         self.names, self.initials = {}, {}
         for name, details in pairs(aliases) do
             if not details.ambiguous then
-                self.names[#self.names + 1] = { name = name, hex = details.hex }
+                self.names[#self.names + 1] = { name = name, hex = details.hex, target = details.target }
             end
         end
 
@@ -181,8 +190,14 @@ addon.Locale:OnReady(function()
                 result[#result + 1] = text:sub(plainStart, cursor - 1)
                 local stop = cursor + #matched.name - 1
                 local raw = text:sub(cursor, stop)
-                local display = "|cff" .. matched.hex .. raw .. "|r"
-                result[#result + 1] = inputMode and wrap(raw, display) or display
+                local color = "|cff" .. matched.hex
+                if inputMode then
+                    result[#result + 1] = wrap(raw, color .. raw .. "|r")
+                else
+                    local target = raw:lower() == matched.target:lower() and raw or matched.target
+                    result[#result + 1] = color .. addon.Format.NameLink(target, raw) .. "|r"
+                end
+
                 cursor, plainStart = stop + 1, stop + 1
             else
                 cursor = cursor + 1

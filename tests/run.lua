@@ -40,6 +40,30 @@ equal(#History.Sorted(data), 1, "settings trim people immediately")
 equal(#History.Sorted(data)[1].messages, 1, "settings trim messages immediately")
 local link = "|cff0070dd|Hitem:123:0:0|h[Some :D https://example.com item]|h|r"
 equal(Format.Message(link, true), link, "native item links untouched")
+
+do
+    local bare = "|Hitem:123:0:0|h[Some :D https://example.com item]|h"
+    local quality, queried
+    C_Item = {
+        GetItemInfo = function(itemLink)
+            queried = itemLink
+            return "Some item", nil, quality
+        end,
+    }
+
+    ITEM_QUALITY_COLORS = { [3] = { hex = "|cff0070dd" } }
+    equal(Format.Message(bare, true), bare, "uncached links stay clickable")
+    equal(queried, bare, "item lookup receives the complete link")
+    assert(Format.pendingItemColors[123], "waits for the item's data")
+
+    quality = 3
+    equal(Format.Message("Use " .. bare .. " here", true), "Use " .. link .. " here", "fills in missing rarity color")
+    equal(Format.Input(bare, true, 14), bare, "draft keeps the original item link")
+    local named = "|cnIQ2:" .. bare .. "|r"
+    equal(Format.Message(named, true), named, "existing named rarity color is preserved")
+    C_Item, ITEM_QUALITY_COLORS = nil, nil
+end
+
 assert(Format.Message(":D =D :P ;)", true):find("excited.tga", 1, true))
 equal(Format.Message(":D =D :P", false), ":D =D :P", "disabled smileys")
 assert(

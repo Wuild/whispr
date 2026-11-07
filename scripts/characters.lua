@@ -243,7 +243,27 @@ function Characters.RefreshSources(data)
         end
     end
 
-    local units = { "player", "target", "focus", "mouseover" }
+    local playerName, playerDetails = unitDetails("player")
+    if playerName then
+        add(playerName, playerDetails, true)
+        if known(playerDetails.classFile) then
+            local realm = GetNormalizedRealmName and GetNormalizedRealmName()
+            if
+                not (addon.Client and addon.Client.hasLastNames)
+                and not playerName:find("-", 1, true)
+                and not secret(realm)
+                and known(realm)
+            then
+                playerName = playerName .. "-" .. realm
+            end
+
+            local player = data.playerCharacter or {}
+            player.name, player.classFile = playerName, playerDetails.classFile
+            data.playerCharacter = player
+        end
+    end
+
+    local units = { "target", "focus", "mouseover" }
     for index = 1, 4 do
         units[#units + 1] = "party" .. index
     end

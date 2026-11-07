@@ -1,5 +1,5 @@
 local _, addon = ...
-local Format = {}
+local Format = { pendingItemColors = {} }
 addon.Format = Format
 
 function Format.InputAutoSpace(token)
@@ -24,6 +24,10 @@ end
 
 local function inputLink(raw, display)
     return "|cff68bfff|Hwhisprinput:" .. encode(raw) .. "|h" .. display .. "|h|r"
+end
+
+function Format.NameLink(name, label)
+    return "|Hwhisprname:" .. encode(name) .. "|h" .. (label or name):gsub("|", "||") .. "|h"
 end
 
 -- Native chat markers are independent of the optional emoji extension.
@@ -84,10 +88,33 @@ local function plain(text, enabled, fontSize, inviteKey, inputMode)
     )
 end
 
-local function mapPlain(text, transform)
+local function colorItemLink(link)
+    local itemID = tonumber(link:match("^|Hitem:(%d+)[:|]"))
+    local getItemInfo = C_Item and C_Item.GetItemInfo or GetItemInfo
+    if not itemID or itemID == 0 or not getItemInfo then
+        return
+    end
+
+    local _, _, quality = getItemInfo(link)
+    if HasAnySecretValues and HasAnySecretValues(quality) then
+        return
+    end
+
+    if quality == nil then
+        Format.pendingItemColors[itemID] = true
+        return
+    end
+
+    local color = ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[quality]
+    if color and color.hex then
+        return color.hex .. link .. "|r"
+    end
+end
+
+local function mapPlain(text, transform, colorItems)
     -- Treat native links, textures, atlases and color escapes as opaque spans.
     -- A link's label can contain emoticons or URLs; never rewrite its payload.
-    local result, cursor, scan = {}, 1, 1
+    local result, cursor, scan, colored = {}, 1, 1, false
     while scan <= #text do
         local start = text:find("|", scan, true)
         if not start then
@@ -95,18 +122,20 @@ local function mapPlain(text, transform)
         end
 
         local tail = text:sub(start)
-        local protected = tail:match("^|H.-|h.-|h")
-            or tail:match("^|T.-|t")
-            or tail:match("^|A.-|a")
-            or tail:match("^|c%x%x%x%x%x%x%x%x")
-            or tail:match("^|r")
+        local link = tail:match("^|H.-|h.-|h")
+        local color = tail:match("^|c%x%x%x%x%x%x%x%x") or tail:match("^|cn[%w_]+:")
+        local protected = link or tail:match("^|T.-|t") or tail:match("^|A.-|a") or color or tail:match("^|r")
         if protected then
             result[#result + 1] = transform(text:sub(cursor, start - 1))
-            result[#result + 1] = protected
+            result[#result + 1] = colorItems and link and not colored and colorItemLink(link) or protected
+            if color or protected == "|r" then
+                colored = color ~= nil
+            end
+
             cursor = start + #protected
             scan = cursor
         else
-            scan = start + 1
+            scan = start + (tail:sub(1, 2) == "||" and 2 or 1)
         end
     end
 
@@ -117,7 +146,7 @@ end
 function Format.Message(text, enabled, fontSize, inviteKey, inputMode)
     local rendered = mapPlain(text, function(span)
         return plain(span, enabled, fontSize, inviteKey, inputMode)
-    end)
+    end, not inputMode)
 
     if enabled then
         rendered = mapPlain(rendered, function(span)
