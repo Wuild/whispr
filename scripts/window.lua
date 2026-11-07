@@ -2508,7 +2508,8 @@ function Window:Create()
 
     local function clickName(_, button)
         if
-            (button == "RightButton" or button == "LeftButton") and not self:InsertConversationName(self.active, button)
+            (button == "RightButton" or button == "LeftButton")
+            and not self:InsertConversationName(self.active, button)
         then
             self:ConversationMenu(self.headerAvatar, self.active)
         end
