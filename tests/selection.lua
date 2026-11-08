@@ -3,6 +3,7 @@ assert(loadfile("tests/support/locale.lua"))(addon)
 assert(loadfile("extensions/emoji/emotes.lua"))("Whispr", addon)
 assert(loadfile("extensions/emoji/renderer.lua"))("Whispr", addon)
 assert(loadfile("tests/support/emoji-filters.lua"))(addon)
+assert(loadfile("scripts/format.lua"))("Whispr", addon)
 assert(loadfile("scripts/selection.lua"))("Whispr", addon)
 local Selection = addon.Selection
 
@@ -194,6 +195,8 @@ equal(window.messageSelection, nil, "simple click does not take copy focus")
 equal(Selection.CopyText("é漢字", 1, 5), "é漢", "UTF-8 byte spans remain intact")
 local link = "|cffabcdef|Hitem:123|h[Sword]|h|r"
 equal(Selection.CopyText(link, 1, #link), "[Sword]", "copies item label without markup")
+local namedLink = "|cnIQ3:|Hitem:123|h[Sword ||h]|h|r"
+equal(Selection.CopyText(namedLink, 1, #namedLink), "[Sword |h]", "copies named color links without markup")
 local a = assert(link:find("Sword", 1, true))
 equal(Selection.CopyText(link, a, a + 2), "Swo", "partial hyperlink label")
 local smile = "|TInterface\\AddOns\\Whispr\\assets\\emotes\\happy.tga:18|t"
@@ -297,7 +300,7 @@ for _, rendered in ipairs({ smile, "hello " .. smile .. " world", "hello |A:some
     Selection.Clear(window)
 end
 
-local wrapped = "hello " .. smile .. " world"
+local wrapped = "hello " .. smile .. " |cnIQ3:world|r"
 local originalGetStringHeight = bubble.text.GetStringHeight
 bubble.text.GetStringHeight = function()
     return 16
@@ -306,7 +309,7 @@ end
 Selection.Prepare(bubble, wrapped, 50)
 Selection.Update(window, bubble, wrapped, 50, 2)
 equal(#bubble.selectionLayout.lines, 2, "native-width wrapping keeps words together")
-equal(bubble.text:GetText(), "hello " .. smile .. "\nworld", "render and selection share line breaks")
+equal(bubble.text:GetText(), "hello " .. smile .. "\n|cnIQ3:world|r", "named color takes no space when wrapping")
 equal(bubble.text:GetHeight(), 34, "emoji message gets room for both lines when its reported text height is clipped")
 bubble.text.GetStringHeight = originalGetStringHeight
 -- Select only the emoji, forward and backward, using its measured rectangle.

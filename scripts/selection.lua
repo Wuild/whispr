@@ -1,5 +1,6 @@
 local _, addon = ...
 local Selection = {}
+local Format = addon.Format
 addon.Selection = Selection
 
 local function textureText(texture)
@@ -20,10 +21,7 @@ function Selection.CopyText(text, first, last)
     local result, cursor = {}, 1
     while cursor <= #text do
         local tail = text:sub(cursor)
-        local hidden = tail:match("^|c%x%x%x%x%x%x%x%x")
-            or tail:match("^|r")
-            or tail:match("^|H.-|h")
-            or tail:match("^|h")
+        local hidden = Format.ColorEscape(tail) or tail:match("^|r") or tail:match("^|H.-|h") or tail:match("^|h")
         local texture = tail:match("^|T.-|t") or tail:match("^|A.-|a")
         local literal = tail:match("^||")
         local token = hidden or texture or literal or tail:match("^[%z\1-\127\194-\244][\128-\191]*") or tail:sub(1, 1)
@@ -107,10 +105,7 @@ function Selection.Prepare(bubble, rendered, width, naturalWidth)
     local tokens, cursor, prefix = {}, 1, ""
     while cursor <= #rendered do
         local tail = rendered:sub(cursor)
-        local hidden = tail:match("^|c%x%x%x%x%x%x%x%x")
-            or tail:match("^|r")
-            or tail:match("^|H.-|h")
-            or tail:match("^|h")
+        local hidden = Format.ColorEscape(tail) or tail:match("^|r") or tail:match("^|H.-|h") or tail:match("^|h")
         local token = hidden
             or tail:match("^|T.-|t")
             or tail:match("^|A.-|a")

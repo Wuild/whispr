@@ -88,7 +88,11 @@ local function plain(text, enabled, fontSize, inviteKey, inputMode)
     )
 end
 
-local function colorItemLink(link)
+local function colorItemLink(link, label, colorDepth)
+    if not label or colorDepth > 0 then
+        return
+    end
+
     local itemID = tonumber(link:match("^|Hitem:(%d+)[:|]"))
     local getItemInfo = C_Item and C_Item.GetItemInfo or GetItemInfo
     if not itemID or itemID == 0 or not getItemInfo then
@@ -111,10 +115,38 @@ local function colorItemLink(link)
     end
 end
 
-local function mapPlain(text, transform, colorItems)
+function Format.ColorEscape(text)
+    return text:match("^|c%x%x%x%x%x%x%x%x") or text:match("^|cn[%w_]+:")
+end
+
+local function linkDelimiter(text, cursor)
+    local start = text:find("|", cursor, true)
+    while start do
+        local code = text:sub(start + 1, start + 1)
+        if code == "h" then
+            return start
+        end
+
+        start = text:find("|", start + (code == "|" and 2 or 1), true)
+    end
+end
+
+local function matchLink(text)
+    if text:sub(1, 2) ~= "|H" then
+        return
+    end
+
+    local label = linkDelimiter(text, 3)
+    local close = label and linkDelimiter(text, label + 2)
+    if close then
+        return text:sub(1, close + 1), text:sub(label + 2, close - 1), text:sub(3, label - 1)
+    end
+end
+
+local function mapPlain(text, transform, transformMarkup)
     -- Treat native links, textures, atlases and color escapes as opaque spans.
     -- A link's label can contain emoticons or URLs; never rewrite its payload.
-    local result, cursor, scan, colored = {}, 1, 1, false
+    local result, cursor, scan, colorDepth = {}, 1, 1, 0
     while scan <= #text do
         local start = text:find("|", scan, true)
         if not start then
@@ -122,14 +154,16 @@ local function mapPlain(text, transform, colorItems)
         end
 
         local tail = text:sub(start)
-        local link = tail:match("^|H.-|h.-|h")
-        local color = tail:match("^|c%x%x%x%x%x%x%x%x") or tail:match("^|cn[%w_]+:")
+        local link, label = matchLink(tail)
+        local color = Format.ColorEscape(tail)
         local protected = link or tail:match("^|T.-|t") or tail:match("^|A.-|a") or color or tail:match("^|r")
         if protected then
             result[#result + 1] = transform(text:sub(cursor, start - 1))
-            result[#result + 1] = colorItems and link and not colored and colorItemLink(link) or protected
-            if color or protected == "|r" then
-                colored = color ~= nil
+            result[#result + 1] = transformMarkup and transformMarkup(protected, label, colorDepth) or protected
+            if color then
+                colorDepth = colorDepth + 1
+            elseif protected == "|r" then
+                colorDepth = math.max(0, colorDepth - 1)
             end
 
             cursor = start + #protected
@@ -146,7 +180,7 @@ end
 function Format.Message(text, enabled, fontSize, inviteKey, inputMode)
     local rendered = mapPlain(text, function(span)
         return plain(span, enabled, fontSize, inviteKey, inputMode)
-    end, not inputMode)
+    end, not inputMode and colorItemLink)
 
     if enabled then
         rendered = mapPlain(rendered, function(span)
@@ -178,37 +212,46 @@ Format.Encode = encode
 -- Only unwrap our composer decorations. Native item/player links remain intact.
 -- Positions are byte offsets, matching EditBox cursor APIs (including UTF-8).
 function Format.InputPlain(text)
-    local result, spans, cursor, rawLength = {}, {}, 1, 0
-    while cursor <= #text do
-        local first, last, payload = text:find("|Hwhisprinput:(%x+)|h.-|h", cursor)
+    local result, spans, cursor, scan, rawLength = {}, {}, 1, 1, 0
+    local colorStart, colorEnd
+    while scan <= #text do
+        local first = text:find("|", scan, true)
         if not first then
             break
         end
 
-        -- EditBox edits can remove or change the color wrapper independently
-        -- of the link. Decode our payload regardless of its display color.
-        local colorStart = first - 10
-        if colorStart >= cursor and text:sub(colorStart, first - 1):match("^|c%x%x%x%x%x%x%x%x$") then
-            first = colorStart
-        end
+        local tail = text:sub(first)
+        local color = Format.ColorEscape(tail)
+        local link, _, target = matchLink(tail)
+        if color then
+            colorStart, colorEnd = first, first + #color
+            scan = colorEnd
+        elseif link then
+            scan = first + #link
+            local payload = target:match("^whisprinput:(%x+)$")
+            local raw = payload and Format.Decode(payload)
+            if raw then
+                -- EditBox edits can remove or replace our display color.
+                if colorEnd == first then
+                    first = colorStart
+                end
 
-        if text:sub(last + 1, last + 2) == "|r" then
-            last = last + 2
-        end
+                if text:sub(scan, scan + 1) == "|r" then
+                    scan = scan + 2
+                end
 
-        local raw = Format.Decode(payload)
-        if not raw then
-            break
+                local prefix = text:sub(cursor, first - 1)
+                result[#result + 1] = prefix
+                rawLength = rawLength + #prefix
+                spans[#spans + 1] =
+                    { rawStart = rawLength, rawEnd = rawLength + #raw, displayStart = first - 1, displayEnd = scan - 1 }
+                result[#result + 1] = raw
+                rawLength = rawLength + #raw
+                cursor = scan
+            end
+        else
+            scan = first + (tail:sub(1, 2) == "||" and 2 or 1)
         end
-
-        local prefix = text:sub(cursor, first - 1)
-        result[#result + 1] = prefix
-        rawLength = rawLength + #prefix
-        spans[#spans + 1] =
-            { rawStart = rawLength, rawEnd = rawLength + #raw, displayStart = first - 1, displayEnd = last }
-        result[#result + 1] = raw
-        rawLength = rawLength + #raw
-        cursor = last + 1
     end
 
     result[#result + 1] = text:sub(cursor)
@@ -251,8 +294,8 @@ function Format.Outgoing(text)
 
         result[#result + 1] = text:sub(scan, first - 1)
         local tail = text:sub(first)
-        local escape = tail:match("^||") or tail:match("^|c%x%x%x%x%x%x%x%x") or tail:match("^|r")
-        local link = tail:match("^|H.-|h.-|h")
+        local escape = tail:match("^||") or Format.ColorEscape(tail) or tail:match("^|r")
+        local link = matchLink(tail)
         if link and not link:match("^|Hwhispr") then
             escape = link
         end
@@ -272,12 +315,9 @@ function Format.Outgoing(text)
 end
 
 function Format.Preview(text)
-    return (
-        text:gsub("|H.-|h(.-)|h", "%1")
-            :gsub("|c%x%x%x%x%x%x%x%x", "")
-            :gsub("|r", "")
-            :gsub("|T.-|t", "")
-            :gsub("|A.-|a", "")
-            :gsub("[\r\n]", " ")
-    )
+    return mapPlain(text, function(span)
+        return (span:gsub("[\r\n]", " "))
+    end, function(_, label)
+        return label and Format.Preview(label) or ""
+    end)
 end

@@ -61,6 +61,11 @@ do
     equal(Format.Input(bare, true, 14), bare, "draft keeps the original item link")
     local named = "|cnIQ2:" .. bare .. "|r"
     equal(Format.Message(named, true), named, "existing named rarity color is preserved")
+    equal(Format.Preview(named), "[Some :D https://example.com item]", "preview strips named item colors")
+    local escaped = "|cnIQ3:|Hitem:123|h[An item ||h :D]|h|r"
+    equal(Format.Preview(escaped), "[An item ||h :D]", "preview keeps the full label after an escaped pipe")
+    local nested = "|cnIQ2:outer |cffffffffinner|r " .. bare .. "|r"
+    equal(Format.Message(nested, true), nested, "item retains its enclosing color after a nested reset")
     C_Item, ITEM_QUALITY_COLORS = nil, nil
 end
 
@@ -84,6 +89,10 @@ local payload = rendered:match("|Hwhisprurl:(.-)|h")
 equal(Format.Decode(payload), url, "URL round trip and punctuation")
 equal(Format.Decode("xyz"), nil, "malformed URL payload")
 equal(Format.Preview(link), "[Some :D https://example.com item]", "plain preview")
+local literalStart = "||Hwhisprinput:3a29|htext|h"
+equal(Format.InputPlain(literalStart), literalStart, "an escaped link start is not a composer decoration")
+local literalLink = "||Hwhisprinput:3a29||htext||h"
+equal(Format.Preview("||cnIQ3: " .. literalLink), "||cnIQ3: " .. literalLink, "preview preserves escaped markup")
 equal(Format.Message("|Tsome-texture:16|t :D", true):sub(1, 22), "|Tsome-texture:16|t |T", "texture preserved")
 
 -- Exercise the native whisper handoff with a delayed client parser and secret

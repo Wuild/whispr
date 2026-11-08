@@ -205,6 +205,12 @@ local item = "|cff0070dd|Hitem:123:0:0|h[Item Name]|h|r"
 input.text = item .. " " .. rendered
 Whispr:Send(window)
 equal(sent, item .. " " .. wireEmojis, "valid native item link preserved alongside emoji row")
+
+local namedItem = "|cnIQ3:|Hitem:123:0:0|h[Item Name ||h :D]|h|r"
+input.text = addon.Format.Input(namedItem .. " :) ", true, 14)
+Whispr:Send(window)
+equal(sent, namedItem .. " :) ", "named color and escaped pipe in the link label survive sending")
+
 for _, link in ipairs({
     "|cff71d5ff|Hspell:116|h[Frostbolt]|h|r",
     "|cff4e96f7|Htalent:123:1|h[Talent]|h|r",

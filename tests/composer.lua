@@ -141,7 +141,7 @@ backspace()
 equal(input:GetText(), "before after", "middle emoji can be deleted without losing suffix")
 print("Backspace removes emoji spacing and links without reinserting deleted text.")
 
-for _, wrapper in ipairs({ "|cffffffff", "" }) do
+for _, wrapper in ipairs({ "|cffffffff", "|cnPURE_GREEN_COLOR:", "" }) do
     input.text = wrapper .. "|Hwhisprinput:3a29|h|Temoji:18|t|h" .. (wrapper ~= "" and "|r" or "") .. " "
     input.cursor = #input.text
     equal(input:GetText(), ":) ", "edited display wrapper still decodes emoji")
