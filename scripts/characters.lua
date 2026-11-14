@@ -161,7 +161,7 @@ function Characters.Update(conversation, guid)
     local visible = {}
     -- A currently connected unit (or incoming whisper GUID) is fresher evidence
     -- than a roster's possibly stale offline flag.
-    for _, unit in ipairs({ "target", "focus", "mouseover" }) do
+    for _, unit in ipairs({ "target", "focus" }) do
         local name, details = unitDetails(unit)
         if name and lookup(name) == id then
             visible[#visible + 1] = details
@@ -263,7 +263,7 @@ function Characters.RefreshSources(data)
         end
     end
 
-    local units = { "target", "focus", "mouseover" }
+    local units = { "target", "focus" }
     for index = 1, 4 do
         units[#units + 1] = "party" .. index
     end

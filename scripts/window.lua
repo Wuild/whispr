@@ -2,6 +2,7 @@ local _, addon = ...
 local L = addon.L
 local UI, History, Format = addon.UI, addon.History, addon.Format
 local Window = { rows = {}, bubbles = {}, drafts = {}, following = true, detached = {}, popouts = {} }
+local revealedMessages = setmetatable({}, { __mode = "k" })
 local SIDEBAR_WIDTH = 260
 addon.Window = Window
 
@@ -1533,7 +1534,52 @@ function Window:ShowCopyText(value, caption)
     self.url.input:HighlightText()
 end
 
-function Window:Link(link, text, button, inviteKey)
+function Window:RevealMessage(lineID, message)
+    if not message or not C_ChatInfo or not C_ChatInfo.UncensorChatLine or not C_ChatInfo.GetChatLineText then
+        return
+    end
+
+    if C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown() then
+        return
+    end
+
+    -- Chat line IDs belong to the client session. Confirm that the cached
+    -- line still matches the warning before using an ID from saved history.
+    local source = History.SourceMessage(message)
+    if History.censoredLines[source] ~= lineID then
+        local warning = C_ChatInfo.GetChatLineText(lineID)
+        if (HasAnySecretValues and HasAnySecretValues(warning)) or warning ~= source.text then
+            Whispr:Print(L["WoW no longer has this hidden message available."])
+            return
+        end
+    end
+
+    C_ChatInfo.UncensorChatLine(lineID)
+    local text = C_ChatInfo.GetChatLineText(lineID)
+    if
+        (HasAnySecretValues and HasAnySecretValues(text))
+        or type(text) ~= "string"
+        or text == ""
+        or text == source.text
+    then
+        Whispr:Print(L["WoW no longer has this hidden message available."])
+        return
+    end
+
+    revealedMessages[source] = CENSORED_MESSAGE_REPORT and CENSORED_MESSAGE_REPORT:format(text, lineID) or text
+    self:RefreshMessages()
+end
+
+function Window:Link(link, text, button, inviteKey, message)
+    if link:match("^censoredmessage:") then
+        local lineID = tonumber(link:match("^censoredmessage:(%d+)$"))
+        if button == "LeftButton" and lineID and lineID > 0 then
+            self:RevealMessage(lineID, message)
+        end
+
+        return
+    end
+
     local name = link:match("^whisprname:(%x+)$")
     if name then
         addon.Actions:InsertName(Format.Decode(name), button)
@@ -1655,7 +1701,7 @@ local function createMessageFrame(self)
         local selection = self.messageSelection
         local dragging = owner.selectionDragging and selection and selection.start ~= selection.finish
         if button ~= "RightButton" and not owner.selectionClickSuppressed and not dragging then
-            self:Link(link, text, button, owner.inviteKey)
+            self:Link(link, text, button, owner.inviteKey, owner.row and owner.row.message)
         end
     end)
 
@@ -1725,7 +1771,8 @@ local function measureMessage(bubble, message, conversation, maxWidth, grouped)
             and conversation.transport ~= "bnet"
             and conversation.key
         or nil
-    local rendered = Format.Message(message.text, true, fontSize, bubble.inviteKey)
+    local revealed = revealedMessages[History.SourceMessage(message)]
+    local rendered = Format.Message(revealed or message.text, true, fontSize, not revealed and bubble.inviteKey)
     local classFile = conversation.character and conversation.character.classFile
     if message.outgoing then
         classFile = nil

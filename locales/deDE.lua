@@ -450,6 +450,8 @@ L["Window appearance"] = "Fensterdarstellung"
 L["Window background"] = "Fensterhintergrund"
 L["Windows"] = "Fenster"
 L["Words"] = "Wörter"
+L["WoW no longer has this hidden message available."] =
+    "Diese ausgeblendete Nachricht ist in WoW nicht mehr verfügbar."
 L["Yes please! I have all the materials."] = "Ja, bitte! Ich habe alle Materialien."
 L["Yes! Next time let's clear the adds before we pull, then save our cooldowns for the final phase. That should make things a lot smoother for everyone."] =
     "Ja! Räumen wir nächstes Mal zuerst die Adds weg und sparen die Abklingzeiten für die letzte Phase. Dann sollte es für alle viel entspannter laufen."

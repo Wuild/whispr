@@ -404,6 +404,7 @@ L["Window appearance"] = true
 L["Window background"] = true
 L["Windows"] = true
 L["Words"] = true
+L["WoW no longer has this hidden message available."] = true
 L["Yes please! I have all the materials."] = true
 L["Yes! Next time let's clear the adds before we pull, then save our cooldowns for the final phase. That should make things a lot smoother for everyone."] =
     true

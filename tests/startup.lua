@@ -29,7 +29,6 @@ local supported = {
     GET_ITEM_INFO_RECEIVED = true,
     PLAYER_ENTERING_WORLD = true,
     PLAYER_TARGET_CHANGED = true,
-    UPDATE_MOUSEOVER_UNIT = true,
     GROUP_ROSTER_UPDATE = true,
     FRIENDLIST_UPDATE = true,
     GUILD_ROSTER_UPDATE = true,
@@ -58,6 +57,16 @@ end
 Whispr:OnEnable()
 assert(Whispr.running and refreshed and hooked, "startup must reach metadata refresh and whisper hooks")
 assert(registered.GUILD_ROSTER_UPDATE, "guild metadata still refreshes on roster changes")
+
+for _, event in ipairs({ "UNIT_NAME_UPDATE", "UNIT_LEVEL" }) do
+    refreshed = false
+    registered[event](event, "mouseover")
+    registered[event](event, "nameplate1")
+    assert(not refreshed, "hover and nameplate metadata cannot schedule a full roster refresh")
+    registered[event](event, "party1")
+    assert(refreshed, "party metadata still schedules a roster refresh")
+end
+
 print("Startup event validation and whisper hook installation passed.")
 
 local geometrySaved = false

@@ -728,6 +728,45 @@ end
 
 Window:Link("item:123", "item", "LeftButton")
 equal(clicked, "item:123", "item clicks still use native behavior")
+
+do
+    local link = "censoredmessage:246"
+    local warning = "Potentially inappropriate. |H" .. link .. "|h[Show Message]|h"
+    local chat = History.Add(Whispr.db.char, Whispr.db.global, "Filtered Sender", warning, false, 50, false, nil, 246)
+    local message = chat.messages[1]
+    local revealed, notice = false, nil
+    local originalPrint = Whispr.Print
+
+    function Whispr:Print(text)
+        notice = text
+    end
+
+    C_ChatInfo = {
+        UncensorChatLine = function(lineID)
+            equal(lineID, 246, "reveal targets the clicked chat line")
+            revealed = true
+        end,
+
+        GetChatLineText = function(lineID)
+            return lineID == 246 and (revealed and "Revealed whisper" or warning) or "Unrelated line"
+        end,
+    }
+
+    Window:Open(chat.key)
+    flush()
+    local filtered = Window.bubbles[1]
+    filtered.scripts.OnHyperlinkClick(filtered, "censoredmessage:999", "", "LeftButton")
+    assert(notice and not revealed, "an unrelated cached line cannot be revealed")
+    filtered.scripts.OnHyperlinkClick(filtered, link, "", "RightButton")
+    assert(not revealed, "right-click leaves the message hidden")
+    filtered.scripts.OnHyperlinkClick(filtered, link, "", "LeftButton")
+    flush()
+    assert(revealed, "Show Message uses the native reveal API")
+    equal(Window.bubbles[1].text:GetText(), "Revealed whisper", "revealed text replaces the warning in the bubble")
+    equal(message.text, warning, "the saved message keeps its original warning")
+    C_ChatInfo, Whispr.Print = nil, originalPrint
+end
+
 local other = Whispr.db.char.conversations["recent 11"]
 Window:Open(person.key)
 flush()

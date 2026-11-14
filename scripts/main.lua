@@ -193,13 +193,10 @@ function Whispr:OnEnable()
     for _, event in ipairs({
         "PLAYER_ENTERING_WORLD",
         "PLAYER_TARGET_CHANGED",
-        "UPDATE_MOUSEOVER_UNIT",
         "GROUP_ROSTER_UPDATE",
         "FRIENDLIST_UPDATE",
         "GUILD_ROSTER_UPDATE",
         "PLAYER_FOCUS_CHANGED",
-        "UNIT_LEVEL",
-        "UNIT_NAME_UPDATE",
     }) do
         if event == "PLAYER_ENTERING_WORLD" then
             self:RegisterEvent(event, function()
@@ -211,6 +208,26 @@ function Whispr:OnEnable()
         end
     end
 
+    -- Unit events also fire for mouseover and nameplate tokens. Only refresh
+    -- for units whose details are collected by the roster scan.
+    local function refreshRosterUnit(_, unit)
+        if secret(unit) or type(unit) ~= "string" then
+            return
+        end
+
+        if
+            unit == "player"
+            or unit == "target"
+            or unit == "focus"
+            or unit:match("^party%d+$")
+            or unit:match("^raid%d+$")
+        then
+            self:RefreshCharacters()
+        end
+    end
+
+    self:RegisterEvent("UNIT_LEVEL", refreshRosterUnit)
+    self:RegisterEvent("UNIT_NAME_UPDATE", refreshRosterUnit)
     self:RefreshCharacters()
     self:HookWhispers()
 end
@@ -300,7 +317,8 @@ function Whispr:BattleNetWhisper(event, text, name, ...)
             outgoing,
             time(),
             Window:IsReading(identity.key),
-            identity.key
+            identity.key,
+            (select(9, ...))
         )
     end
 
@@ -383,7 +401,17 @@ function Whispr:Whisper(event, text, name, ...)
 
     local conversation = outgoing and History.Confirm(self.db.char, key, text)
     if not conversation then
-        conversation = History.Add(self.db.char, self.db.global, name, text, outgoing, time(), Window:IsReading(key))
+        conversation = History.Add(
+            self.db.char,
+            self.db.global,
+            name,
+            text,
+            outgoing,
+            time(),
+            Window:IsReading(key),
+            nil,
+            (select(9, ...))
+        )
     end
 
     if conversation then

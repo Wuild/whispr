@@ -224,7 +224,7 @@ function Actions:OpenPlayerMenu(key, appendEntries)
 
         which = "BN_FRIEND"
     elseif context.guid and UnitGUID then
-        for _, unit in ipairs({ "target", "focus", "mouseover" }) do
+        for _, unit in ipairs({ "target", "focus" }) do
             local guid = UnitGUID(unit)
             if not (HasAnySecretValues and HasAnySecretValues(guid)) and guid == context.guid then
                 context.unit = unit

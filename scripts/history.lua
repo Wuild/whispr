@@ -1,6 +1,12 @@
 local _, addon = ...
-local History = {}
+local History = { censoredLines = setmetatable({}, { __mode = "k" }) }
 addon.History = History
+
+-- Account history rows project the original saved message through __index.
+function History.SourceMessage(message)
+    local projection = getmetatable(message)
+    return projection and projection.__index or message
+end
 
 function History.Key(name)
     return string.lower((name or ""):match("^%s*(.-)%s*$"))
@@ -65,7 +71,7 @@ function History.Trim(data, settings)
     end
 end
 
-function History.Add(data, settings, name, text, outgoing, timestamp, read, identity)
+function History.Add(data, settings, name, text, outgoing, timestamp, read, identity, chatLineID)
     local key = identity or History.Key(name)
     if key == "" then
         return
@@ -82,12 +88,22 @@ function History.Add(data, settings, name, text, outgoing, timestamp, read, iden
     conversation.name = name
     conversation.archived = nil
     conversation.updated = data.sequence
-    conversation.messages[#conversation.messages + 1] = {
+    local message = {
         id = data.sequence,
         text = text,
         outgoing = outgoing,
         time = timestamp,
     }
+
+    conversation.messages[#conversation.messages + 1] = message
+    if
+        not outgoing
+        and not (HasAnySecretValues and HasAnySecretValues(chatLineID))
+        and type(chatLineID) == "number"
+        and text:find("|Hcensoredmessage:" .. chatLineID .. "|h", 1, true)
+    then
+        History.censoredLines[message] = chatLineID
+    end
 
     if read then
         conversation.unread = 0

@@ -23,6 +23,7 @@ read_globals = {
     "BNSetBlocked",
     "BNet_GetBNetIDAccount",
     "CANCEL",
+    "CENSORED_MESSAGE_REPORT",
     "CHAT_FRAMES",
     "CLASS_ICON_TCOORDS",
     "C_AddOns",
